@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SOL/USDT 선물 신호</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-void:#0A0C10;
+    --panel:#12151B;
+    --panel-2:#171B22;
+    --line:#242933;
+    --long:#1FCE8F;
+    --short:#FF4D6A;
+    --wait:#C9A227;
+    --text:#E8EAED;
+    --muted:#6B7280;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg-void); color:var(--text);
+    font-family:'Inter',sans-serif; padding:24px;
+    display:flex; justify-content:center;
+  }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+  .card{
+    width:100%; max-width:560px; background:var(--panel);
+    border:1px solid var(--line); border-radius:14px; overflow:hidden;
+  }
+  .topbar{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:16px 20px; border-bottom:1px solid var(--line);
+  }
+  .symbol{ font-weight:700; letter-spacing:.04em; font-size:13px; color:var(--muted); }
+  .live{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted);}
+  .dot{ width:6px; height:6px; border-radius:50%; background:var(--long); box-shadow:0 0 8px var(--long); animation:pulse 1.6s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+  .price-row{ padding:20px 20px 8px; }
+  .price{ font-size:36px; font-weight:700; }
+  .updated{ font-size:11px; color:var(--muted); margin-top:4px;}
+
+  .position-row{ padding:4px 20px 20px; display:flex; align-items:center; gap:14px; }
+  .badge{
+    font-weight:700; font-size:13px; padding:6px 14px; border-radius:999px;
+    letter-spacing:.03em;
+  }
+  .badge.long{ background:rgba(31,206,143,.15); color:var(--long); border:1px solid rgba(31,206,143,.4);}
+  .badge.short{ background:rgba(255,77,106,.15); color:var(--short); border:1px solid rgba(255,77,106,.4);}
+  .badge.wait{ background:rgba(201,162,39,.15); color:var(--wait); border:1px solid rgba(201,162,39,.4);}
+  .confidence{ font-size:13px; color:var(--muted); }
+  .confidence b{ color:var(--text); font-size:15px; }
+
+  /* 시그니처 엘리먼트: 5전략 합의 미터 */
+  .consensus{ padding:0 20px 20px; }
+  .consensus-label{ font-size:11px; color:var(--muted); margin-bottom:6px; display:flex; justify-content:space-between;}
+  .meter{ display:flex; height:10px; border-radius:6px; overflow:hidden; background:var(--panel-2); }
+  .seg{ height:100%; }
+
+  .grid{ display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--line); }
+  .col{ padding:18px 20px; }
+  .col + .col{ border-left:1px solid var(--line); }
+  .row{ display:flex; justify-content:space-between; padding:6px 0; font-size:13px; }
+  .row .k{ color:var(--muted); }
+  .row .v{ font-weight:600; }
+
+  .strategy{ margin-bottom:10px; }
+  .strategy-top{ display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
+  .strategy-top .name{ color:var(--muted); }
+  .bar{ height:6px; background:var(--panel-2); border-radius:4px; overflow:hidden; }
+  .bar-fill{ height:100%; border-radius:4px; }
+
+  .state-row{ display:flex; gap:10px; padding:14px 20px; border-top:1px solid var(--line); }
+  .state{ flex:1; background:var(--panel-2); border-radius:10px; padding:10px 12px; }
+  .state .k{ font-size:11px; color:var(--muted); }
+  .state .v{ font-size:14px; font-weight:600; margin-top:2px; }
+
+  .reasons{ padding:16px 20px 20px; border-top:1px solid var(--line); }
+  .reasons h4{ margin:0 0 10px; font-size:12px; color:var(--muted); font-weight:600; letter-spacing:.03em; }
+  .reasons ul{ margin:0; padding-left:18px; font-size:12.5px; line-height:1.6; color:#C7CBD3; }
+
+  .no-trade{ padding:20px; text-align:center; color:var(--wait); font-size:13px; border-top:1px solid var(--line);}
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="topbar">
+    <span class="symbol">SOL/USDT PERP · BITGET</span>
+    <span class="live"><span class="dot"></span>실시간</span>
+  </div>
+
+  <div class="price-row">
+    <div class="price mono" id="price">--</div>
+    <div class="updated" id="updated">불러오는 중...</div>
+  </div>
+
+  <div class="position-row">
+    <span class="badge wait" id="badge">관망</span>
+    <span class="confidence">신뢰도 <b id="confidence" class="mono">--%</b></span>
+  </div>
+
+  <div class="consensus">
+    <div class="consensus-label"><span>전략 합의 미터</span><span id="agreement">-/5 일치</span></div>
+    <div class="meter" id="meter"></div>
+  </div>
+
+  <div class="grid">
+    <div class="col" id="riskCol">
+      <div class="row"><span class="k">진입가</span><span class="v mono" id="entry">-</span></div>
+      <div class="row"><span class="k">손절가(SL)</span><span class="v mono" id="sl">-</span></div>
+      <div class="row"><span class="k">TP1</span><span class="v mono" id="tp1">-</span></div>
+      <div class="row"><span class="k">TP2</span><span class="v mono" id="tp2">-</span></div>
+      <div class="row"><span class="k">TP3</span><span class="v mono" id="tp3">-</span></div>
+      <div class="row"><span class="k">Risk Reward</span><span class="v mono" id="rr">-</span></div>
+    </div>
+    <div class="col" id="strategyCol"></div>
+  </div>
+
+  <div class="state-row">
+    <div class="state"><div class="k">시장 상태</div><div class="v" id="marketState">-</div></div>
+    <div class="state"><div class="k">변동성</div><div class="v" id="volState">-</div></div>
+  </div>
+
+  <div class="reasons">
+    <h4>진입 근거</h4>
+    <ul id="reasonList"></ul>
+  </div>
+</div>
+
+<script>
+const DIR_COLOR = { long: 'var(--long)', short: 'var(--short)', neutral: '#3A4150' };
+const WEIGHTS = {'추세':0.25,'모멘텀':0.20,'거래량':0.20,'가격행동':0.20,'변동성':0.15};
+
+function fmt(n){ return (n === null || n === undefined) ? '-' : Number(n).toLocaleString('en-US',{maximumFractionDigits:4}); }
+
+async function loadSignal(){
+  try{
+    const res = await fetch('/signal');
+    const s = await res.json();
+    render(s);
+  }catch(e){
+    document.getElementById('updated').textContent = '데이터 로드 실패 - 재시도 중...';
+  }
+}
+
+function render(s){
+  document.getElementById('price').textContent = '$' + fmt(s.current_price);
+  document.getElementById('updated').textContent = '갱신: ' + new Date(s.signal_time).toLocaleTimeString('ko-KR');
+
+  const badge = document.getElementById('badge');
+  badge.textContent = s.position;
+  badge.className = 'badge ' + (s.position === '롱' ? 'long' : s.position === '숏' ? 'short' : 'wait');
+
+  document.getElementById('confidence').textContent = s.confidence + '%';
+
+  document.getElementById('entry').textContent = fmt(s.entry_price);
+  document.getElementById('sl').textContent = fmt(s.stop_loss);
+  document.getElementById('tp1').textContent = fmt(s.tp1);
+  document.getElementById('tp2').textContent = fmt(s.tp2);
+  document.getElementById('tp3').textContent = fmt(s.tp3);
+  document.getElementById('rr').textContent = s.risk_reward ? ('1 : ' + s.risk_reward) : '-';
+
+  document.getElementById('marketState').textContent = s.market_state;
+  document.getElementById('volState').textContent = s.volatility_state;
+
+  // 전략 합의 미터 (시그니처 엘리먼트)
+  const meter = document.getElementById('meter');
+  meter.innerHTML = '';
+  let agree = 0;
+  const majorityDir = s.position === '롱' ? 'long' : s.position === '숏' ? 'short' : 'neutral';
+  (s.strategy_breakdown || []).forEach(b=>{
+    const w = WEIGHTS[b.name] || 0.2;
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    seg.style.width = (w*100) + '%';
+    seg.style.background = DIR_COLOR[b.direction] || '#3A4150';
+    seg.style.opacity = Math.max(0.25, b.score/100);
+    meter.appendChild(seg);
+    if (b.direction === majorityDir && majorityDir !== 'neutral') agree++;
+  });
+  document.getElementById('agreement').textContent = agree + '/' + (s.strategy_breakdown||[]).length + ' 일치';
+
+  // 전략별 점수 바
+  const col = document.getElementById('strategyCol');
+  col.innerHTML = '';
+  (s.strategy_breakdown || []).forEach(b=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'strategy';
+    wrap.innerHTML = `
+      <div class="strategy-top"><span class="name">${b.name}</span><span class="mono">${b.score}</span></div>
+      <div class="bar"><div class="bar-fill" style="width:${b.score}%;background:${DIR_COLOR[b.direction]||'#3A4150'}"></div></div>
+    `;
+    col.appendChild(wrap);
+  });
+
+  // 진입 근거
+  const list = document.getElementById('reasonList');
+  list.innerHTML = '';
+  (s.reasons || []).forEach(r=>{
+    const li = document.createElement('li');
+    li.textContent = r;
+    list.appendChild(li);
+  });
+}
+
+loadSignal();
+setInterval(loadSignal, 15000);
+</script>
+</body>
+</html>
