@@ -111,7 +111,7 @@ def run_backtest(tf_data: dict[str, pd.DataFrame]) -> list[Trade]:
 
 
 def run_backtest_debug(tf_data: dict[str, pd.DataFrame]) -> dict:
-    """어느 단계에서 신호가 막히는지 진단 (워밍업 부족 / 크로스 미발생 / 점수 미달 등을 구분)"""
+    """어느 단계에서 신호가 막히는지 진단 (워밍업 부족 / 크로스 미발생 / 점수 미달 / RR 미달 등을 구분)"""
     main_df = tf_data["main"]
     htf1_df, htf2_df = tf_data["htf1"], tf_data["htf2"]
 
@@ -122,11 +122,14 @@ def run_backtest_debug(tf_data: dict[str, pd.DataFrame]) -> dict:
         "warmup_main": 0,
         "rsi_na": 0,
         "flat_trend": 0,
-        "cross_not_fired": 0,       # 방향은 있는데(리닝) 아직 RSI 크로스 자체가 안 남
+        "cross_not_fired": 0,        # 방향은 있는데(리닝) 아직 RSI 크로스 자체가 안 남
         "crossed_but_low_score": 0,  # 크로스는 났는데 총점이 min_score 미달
-        "trade_signals": 0,
+        "score_ok_but_no_rr": 0,     # 점수는 통과했는데 RiskTargets가 None (atr<=0 등)
+        "score_ok_but_rr_too_low": 0,  # 점수는 통과했는데 손익비 기준 미달
+        "trade_signals": 0,          # 실제 build_signal 기준 is_trade=True (=/backtest의 total_trades와 일치해야 함)
     }
     score_when_crossed: list[float] = []
+    rr_samples: list[dict] = []  # score_ok_but_rr_too_low/no_rr 케이스 샘플 몇 개 상세 기록
 
     i = MIN_WARMUP_BARS
     while i < len(main_df) - 1:
@@ -152,7 +155,23 @@ def run_backtest_debug(tf_data: dict[str, pd.DataFrame]) -> dict:
             if composite.total_score < settings.min_score:
                 counters["crossed_but_low_score"] += 1
             else:
-                counters["trade_signals"] += 1
+                # 점수까지 통과 -> 실제 build_signal로 RR까지 확인
+                signal = build_signal({"main": window_main, "htf1": window_htf1, "htf2": window_htf2})
+                if signal.is_trade:
+                    counters["trade_signals"] += 1
+                else:
+                    last = window_main.iloc[-1]
+                    atr = float(last["atr"]) if pd.notna(last["atr"]) else None
+                    if atr is None or atr <= 0:
+                        counters["score_ok_but_no_rr"] += 1
+                    else:
+                        counters["score_ok_but_rr_too_low"] += 1
+                    if len(rr_samples) < 5:
+                        rr_samples.append({
+                            "time": str(cutoff), "position": composite.lean, "score": composite.total_score,
+                            "atr": atr, "close": float(last["close"]),
+                            "no_trade_reason": signal.reasons[0] if signal.reasons else None,
+                        })
 
         i += 1
 
@@ -164,4 +183,5 @@ def run_backtest_debug(tf_data: dict[str, pd.DataFrame]) -> dict:
         "counters": counters,
         "cross_fired_count": len(score_when_crossed),
         "avg_score_when_crossed": round(sum(score_when_crossed) / len(score_when_crossed), 1) if score_when_crossed else None,
+        "rr_fail_samples": rr_samples,
     }
