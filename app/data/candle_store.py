@@ -6,17 +6,17 @@ import pandas as pd
 from app.api.bitget_client import bitget_client
 from app.config import settings
 
-# 내부 표기 -> Bitget v2 granularity 표기
-# (공식 문서 기준: 1min/5min/15min/30min/1h/4h/1day 등. "15m","1H" 같은 표기는 400 에러 원인이었음)
+# 내부 표기 -> Bitget v2 선물(mix) granularity 표기
+# 공식 문서 확인: 1m/3m/5m/15m/30m/1H/4H/1D (시간 단위는 대문자 H/D)
 GRANULARITY_MAP = {
-    "1m": "1min",
-    "3m": "3min",
-    "5m": "5min",
-    "15m": "15min",
-    "30m": "30min",
-    "1h": "1h",
-    "4h": "4h",
-    "1d": "1day",
+    "1m": "1m",
+    "3m": "3m",
+    "5m": "5m",
+    "15m": "15m",
+    "30m": "30m",
+    "1h": "1H",
+    "4h": "4H",
+    "1d": "1D",
 }
 
 BITGET_MAX_LIMIT = 1000  # Bitget 캔들 API 1회 요청 최대치
