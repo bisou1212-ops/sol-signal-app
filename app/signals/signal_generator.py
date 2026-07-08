@@ -92,10 +92,12 @@ def build_signal(tf_data: dict[str, pd.DataFrame]) -> Signal:
             "rsi_na": "RSI 계산 데이터 부족",
             "flat_trend": "15분봉 추세 불명확 (횡보) - 리닝 방향 없음",
         }
-        summary = status_messages.get(
-            composite.status,
-            f"모멘텀 크로스 대기 중 (리닝: {'롱' if composite.lean=='long' else '숏'}, 현재 {composite.total_score:.0f}점 / 기준 {settings.min_score}점)",
-        )
+        if composite.status in status_messages:
+            summary = status_messages[composite.status]
+        elif composite.crossed:
+            summary = f"모멘텀 크로스는 발생했으나 거래량스파이크 미충족 - 진입 보류 (리닝: {'롱' if composite.lean=='long' else '숏'}, 현재 {composite.total_score:.0f}점)"
+        else:
+            summary = f"모멘텀 크로스 대기 중 (리닝: {'롱' if composite.lean=='long' else '숏'}, 현재 {composite.total_score:.0f}점 / 기준 {settings.min_score}점)"
         return _build_no_trade(current_price, composite, market_state, volatility_state, summary)
 
     if composite.total_score < settings.min_score:

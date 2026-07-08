@@ -123,7 +123,8 @@ def run_backtest_debug(tf_data: dict[str, pd.DataFrame]) -> dict:
         "rsi_na": 0,
         "flat_trend": 0,
         "cross_not_fired": 0,        # 방향은 있는데(리닝) 아직 RSI 크로스 자체가 안 남
-        "crossed_but_low_score": 0,  # 크로스는 났는데 총점이 min_score 미달
+        "crossed_but_no_volume": 0,  # 크로스는 났는데 거래량스파이크 게이트에 막힘
+        "crossed_but_low_score": 0,  # 크로스+거래량은 충족했는데 총점이 min_score 미달
         "score_ok_but_no_rr": 0,     # 점수는 통과했는데 RiskTargets가 None (atr<=0 등)
         "score_ok_but_rr_too_low": 0,  # 점수는 통과했는데 손익비 기준 미달
         "trade_signals": 0,          # 실제 build_signal 기준 is_trade=True (=/backtest의 total_trades와 일치해야 함)
@@ -148,8 +149,10 @@ def run_backtest_debug(tf_data: dict[str, pd.DataFrame]) -> dict:
 
         if composite.status in ("warmup_trend", "warmup_main", "rsi_na", "flat_trend"):
             counters[composite.status] += 1
-        elif composite.direction == Direction.NEUTRAL:
+        elif composite.direction == Direction.NEUTRAL and not composite.crossed:
             counters["cross_not_fired"] += 1
+        elif composite.direction == Direction.NEUTRAL and composite.crossed:
+            counters["crossed_but_no_volume"] += 1
         else:
             score_when_crossed.append(composite.total_score)
             if composite.total_score < settings.min_score:
