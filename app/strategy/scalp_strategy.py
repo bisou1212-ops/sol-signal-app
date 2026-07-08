@@ -152,7 +152,8 @@ def evaluate_scalp(main_df: pd.DataFrame, trend_df: pd.DataFrame) -> ScalpCompos
     met = sum(1 for _, ok, _, _ in conditions if ok)
     total_score = round(met / len(conditions) * 100, 1)
     breakdown = [
-        {"name": name, "score": 100 if ok else 0, "progress": progress,
+        {"name": name, "score": 100 if ok else 0,
+         "progress": progress if ok else min(progress, 99.0),  # 미충족인데 100으로 보이면 "충족"과 헷갈리므로 상한
          "direction": lean.value if ok else "neutral", "reasons": [reason]}
         for name, ok, reason, progress in conditions
     ]
