@@ -52,8 +52,9 @@ def _build_no_trade(
     composite,
     market_state: str,
     volatility_state: str,
-    extra_reason: str,
+    summary_reason: str,
 ) -> Signal:
+    detail_reasons = [f"{b['name']} ({'충족' if b['score'] == 100 else '미충족'}): {b['reasons'][0]}" for b in composite.breakdown]
     return Signal(
         current_price=round(current_price, 4),
         position="관망",
@@ -68,7 +69,7 @@ def _build_no_trade(
         volatility_state=volatility_state,
         signal_time=datetime.now(timezone.utc).isoformat(),
         is_trade=False,
-        reasons=[extra_reason],
+        reasons=[summary_reason] + detail_reasons,
         strategy_breakdown=composite.breakdown,
     )
 
@@ -85,12 +86,18 @@ def build_signal(tf_data: dict[str, pd.DataFrame]) -> Signal:
     volatility_state = get_volatility_state(main_df)
 
     if composite.direction == Direction.NEUTRAL:
-        return _build_no_trade(current_price, composite, market_state, volatility_state, "5조건 컨플루언스 미충족 (방향성 불명확)")
+        if composite.agreement_count == 0 and not composite.breakdown:
+            summary = "데이터 워밍업 중"
+        elif composite.lean == "neutral":
+            summary = "15분봉 추세 불명확 (횡보) - 리닝 방향 없음"
+        else:
+            summary = f"모멘텀 크로스 대기 중 (리닝: {'롱' if composite.lean=='long' else '숏'}, 현재 {composite.total_score:.0f}점 / 기준 {settings.min_score}점)"
+        return _build_no_trade(current_price, composite, market_state, volatility_state, summary)
 
     if composite.total_score < settings.min_score:
         return _build_no_trade(
             current_price, composite, market_state, volatility_state,
-            f"조건 충족 {composite.agreement_count}/{composite.total_strategies} ({composite.total_score:.0f}점) < 기준 {settings.min_score}점",
+            f"크로스는 발생했으나 조건 충족 {composite.agreement_count}/{composite.total_strategies} ({composite.total_score:.0f}점) < 기준 {settings.min_score}점",
         )
 
     risk = calculate_risk_targets(main_df, composite.direction)

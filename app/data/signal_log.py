@@ -7,6 +7,17 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "signal_history.db"
 
+# 기존 배포된 DB에 새 컬럼을 안전하게 추가하기 위한 마이그레이션 목록
+_MIGRATIONS = [
+    "ALTER TABLE signal_log ADD COLUMN tp1 REAL",
+    "ALTER TABLE signal_log ADD COLUMN tp2 REAL",
+    "ALTER TABLE signal_log ADD COLUMN tp3 REAL",
+    "ALTER TABLE signal_log ADD COLUMN outcome TEXT",       # NULL(미종료/관망) | '익절' | '손절' | '본전'
+    "ALTER TABLE signal_log ADD COLUMN exit_price REAL",
+    "ALTER TABLE signal_log ADD COLUMN r_multiple REAL",
+    "ALTER TABLE signal_log ADD COLUMN resolved_at TEXT",
+]
+
 
 @contextmanager
 def _conn():
@@ -45,21 +56,46 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL
             )
         """)
+        for stmt in _MIGRATIONS:
+            try:
+                c.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # 컬럼이 이미 존재 (재배포 시 정상 케이스)
 
 
-def log_signal(signal) -> None:
+def log_signal(signal) -> int:
+    """신호를 기록하고 새로 생성된 row id를 반환 (승패 판정 대상 식별용)"""
     d = asdict(signal)
     with _conn() as c:
-        c.execute(
+        cur = c.execute(
             """INSERT INTO signal_log
                (signal_time, is_trade, position, confidence, current_price,
-                entry_price, stop_loss, risk_reward, no_trade_reason)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                entry_price, stop_loss, tp1, tp2, tp3, risk_reward, no_trade_reason)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 d["signal_time"], int(d["is_trade"]), d["position"], d["confidence"],
-                d["current_price"], d["entry_price"], d["stop_loss"], d["risk_reward"],
+                d["current_price"], d["entry_price"], d["stop_loss"],
+                d["tp1"], d["tp2"], d["tp3"], d["risk_reward"],
                 None if d["is_trade"] else (d["reasons"][0] if d["reasons"] else None),
             ),
+        )
+        return cur.lastrowid
+
+
+def get_pending_trades() -> list[dict]:
+    """아직 승패 판정이 안 난 진입 신호 목록 (승패 자동 판정 대상)"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM signal_log WHERE is_trade = 1 AND outcome IS NULL ORDER BY id ASC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_trade_outcome(row_id: int, outcome: str, exit_price: float, r_multiple: float) -> None:
+    with _conn() as c:
+        c.execute(
+            "UPDATE signal_log SET outcome = ?, exit_price = ?, r_multiple = ?, resolved_at = ? WHERE id = ?",
+            (outcome, exit_price, r_multiple, datetime.now(timezone.utc).isoformat(), row_id),
         )
 
 
@@ -84,6 +120,24 @@ def get_stats(hours: int = 24) -> dict:
             "SELECT AVG(confidence) a FROM signal_log WHERE signal_time >= ?", (since,)
         ).fetchone()["a"]
 
+        wins = c.execute(
+            "SELECT COUNT(*) n FROM signal_log WHERE signal_time >= ? AND is_trade = 1 AND outcome IS NOT NULL AND r_multiple > 0",
+            (since,),
+        ).fetchone()["n"]
+        losses = c.execute(
+            "SELECT COUNT(*) n FROM signal_log WHERE signal_time >= ? AND is_trade = 1 AND outcome IS NOT NULL AND r_multiple <= 0",
+            (since,),
+        ).fetchone()["n"]
+        pending = c.execute(
+            "SELECT COUNT(*) n FROM signal_log WHERE signal_time >= ? AND is_trade = 1 AND outcome IS NULL",
+            (since,),
+        ).fetchone()["n"]
+        total_r = c.execute(
+            "SELECT SUM(r_multiple) s FROM signal_log WHERE signal_time >= ? AND is_trade = 1 AND outcome IS NOT NULL",
+            (since,),
+        ).fetchone()["s"]
+
+    resolved = wins + losses
     return {
         "period_hours": hours,
         "total_checks": total,
@@ -93,6 +147,11 @@ def get_stats(hours: int = 24) -> dict:
         "by_position": {r["position"]: r["n"] for r in by_position},
         "top_no_trade_reasons": [{"reason": r["no_trade_reason"], "count": r["n"]} for r in top_no_trade],
         "avg_confidence": round(avg_conf, 1) if avg_conf else 0.0,
+        "wins": wins,
+        "losses": losses,
+        "pending": pending,
+        "win_rate_pct": round(wins / resolved * 100, 1) if resolved else None,
+        "total_r": round(total_r, 2) if total_r else 0.0,
     }
 
 

@@ -165,6 +165,12 @@
       <div class="stat-box"><div class="n mono" id="statRate">-</div><div class="l">신호율</div></div>
       <div class="stat-box"><div class="n mono" id="statPos">-</div><div class="l">롱/숏</div></div>
     </div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="n mono" id="statWins" style="color:var(--long)">-</div><div class="l">승</div></div>
+      <div class="stat-box"><div class="n mono" id="statLosses" style="color:var(--short)">-</div><div class="l">패</div></div>
+      <div class="stat-box"><div class="n mono" id="statWinRate">-</div><div class="l">승률</div></div>
+      <div class="stat-box"><div class="n mono" id="statPending">-</div><div class="l">미종료</div></div>
+    </div>
     <h4>최근 진입 이력</h4>
     <div class="history" id="historyList"><div class="empty-hist">불러오는 중...</div></div>
   </div>
@@ -173,6 +179,11 @@
 <script>
 const DIR_COLOR = { long: 'var(--long)', short: 'var(--short)', neutral: '#3A4150' };
 const WEIGHTS = {'추세':0.25,'모멘텀':0.20,'거래량':0.20,'가격행동':0.20,'변동성':0.15};
+const OUTCOME_STYLE = {
+  '익절': { label: '승', color: 'var(--long)' },
+  '손절': { label: '패', color: 'var(--short)' },
+  '본전': { label: '본전', color: 'var(--muted)' },
+};
 
 function fmt(n){ return (n === null || n === undefined) ? '-' : Number(n).toLocaleString('en-US',{maximumFractionDigits:4}); }
 
@@ -226,15 +237,17 @@ function render(s){
   });
   document.getElementById('agreement').textContent = agree + '/' + (s.strategy_breakdown||[]).length + ' 일치';
 
-  // 전략별 점수 바
+  // 전략별 점수/기준/근거
   const col = document.getElementById('strategyCol');
   col.innerHTML = '';
   (s.strategy_breakdown || []).forEach(b=>{
     const wrap = document.createElement('div');
     wrap.className = 'strategy';
+    const reasonText = (b.reasons && b.reasons[0]) ? b.reasons[0] : '';
     wrap.innerHTML = `
       <div class="strategy-top"><span class="name">${b.name}</span><span class="mono">${b.score}</span></div>
       <div class="bar"><div class="bar-fill" style="width:${b.score}%;background:${DIR_COLOR[b.direction]||'#3A4150'}"></div></div>
+      <div style="font-size:10.5px; color:var(--muted); margin-top:3px; line-height:1.4;">${reasonText}</div>
     `;
     col.appendChild(wrap);
   });
@@ -262,6 +275,10 @@ async function loadStats(){
     document.getElementById('statRate').textContent = st.trade_rate_pct + '%';
     const pos = st.by_position || {};
     document.getElementById('statPos').textContent = (pos['롱']||0) + ' / ' + (pos['숏']||0);
+    document.getElementById('statWins').textContent = st.wins;
+    document.getElementById('statLosses').textContent = st.losses;
+    document.getElementById('statWinRate').textContent = st.win_rate_pct != null ? (st.win_rate_pct + '%') : '-';
+    document.getElementById('statPending').textContent = st.pending;
   }catch(e){}
 }
 
@@ -271,14 +288,20 @@ async function loadHistory(){
     const rows = await res.json();
     const el = document.getElementById('historyList');
     if(!rows.length){ el.innerHTML = '<div class="empty-hist">아직 진입 신호가 없습니다</div>'; return; }
-    el.innerHTML = rows.map(r => `
+    el.innerHTML = rows.map(r => {
+      const st = OUTCOME_STYLE[r.outcome];
+      const outcomeBadge = st
+        ? `<span class="mono" style="color:${st.color}; font-weight:700; font-size:11px;">${st.label}${r.r_multiple!=null ? ' ('+(r.r_multiple>0?'+':'')+r.r_multiple+'R)' : ''}</span>`
+        : `<span class="mono" style="color:var(--muted); font-size:11px;">진행중</span>`;
+      return `
       <div class="hist-row">
         <span class="hist-badge ${r.position === '롱' ? 'long' : 'short'}">${r.position}</span>
         <span class="hist-time mono">${new Date(r.signal_time).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
         <span class="mono">${r.confidence}%</span>
+        ${outcomeBadge}
         <span class="hist-price mono">$${fmt(r.entry_price)}</span>
       </div>
-    `).join('');
+    `;}).join('');
   }catch(e){}
 }
 

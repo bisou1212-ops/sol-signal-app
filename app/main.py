@@ -14,6 +14,7 @@ from app.config import settings
 from app.data import signal_log
 from app.signals.kelly_sizing import calculate_position
 from app.signals.signal_generator import generate_signal
+from app.signals.trade_resolver import resolve_pending_trades
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("sol_signal_app")
@@ -42,12 +43,20 @@ def health():
 @app.get("/signal")
 async def signal():
     try:
+        await resolve_pending_trades()  # 이전 신호들 SL/TP 도달 여부 먼저 확인
         result = await generate_signal()
         signal_log.log_signal(result)
         return asdict(result)
     except Exception:
         logger.exception("신호 생성 실패")
         raise
+
+
+@app.get("/signal/resolve")
+async def signal_resolve():
+    """미종료 신호 승패 판정을 수동으로 즉시 실행"""
+    count = await resolve_pending_trades()
+    return {"resolved": count}
 
 
 @app.get("/signal/stats")
