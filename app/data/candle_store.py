@@ -67,13 +67,15 @@ async def fetch_candles_df(tf: str, symbol: str = None, limit: int = 200) -> pd.
 
 
 async def fetch_multi_tf(symbol: str = None, limit: int = 200) -> dict[str, pd.DataFrame]:
-    """전략에 필요한 전 시간봉 캔들을 병렬로 수집 (지연시간 최소화)"""
+    """전략에 필요한 전 시간봉 캔들을 병렬로 수집 (지연시간 최소화).
+    htf1/htf2(15m 추세필터)는 EMA200 워밍업(210봉)에 여유를 두고 최소 250봉을 확보한다."""
+    htf_limit = max(limit, 250)
     tfs = {
-        "ltf": settings.ltf_ref,
-        "main": settings.main_tf,
-        "htf1": settings.htf_1,
-        "htf2": settings.htf_2,
+        "ltf": (settings.ltf_ref, limit),
+        "main": (settings.main_tf, limit),
+        "htf1": (settings.htf_1, htf_limit),
+        "htf2": (settings.htf_2, htf_limit),
     }
     keys = list(tfs.keys())
-    dfs = await asyncio.gather(*(fetch_candles_df(tfs[k], symbol=symbol, limit=limit) for k in keys))
+    dfs = await asyncio.gather(*(fetch_candles_df(tfs[k][0], symbol=symbol, limit=tfs[k][1]) for k in keys))
     return dict(zip(keys, dfs))

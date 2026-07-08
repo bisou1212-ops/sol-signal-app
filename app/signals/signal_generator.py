@@ -86,12 +86,16 @@ def build_signal(tf_data: dict[str, pd.DataFrame]) -> Signal:
     volatility_state = get_volatility_state(main_df)
 
     if composite.direction == Direction.NEUTRAL:
-        if composite.agreement_count == 0 and not composite.breakdown:
-            summary = "데이터 워밍업 중"
-        elif composite.lean == "neutral":
-            summary = "15분봉 추세 불명확 (횡보) - 리닝 방향 없음"
-        else:
-            summary = f"모멘텀 크로스 대기 중 (리닝: {'롱' if composite.lean=='long' else '숏'}, 현재 {composite.total_score:.0f}점 / 기준 {settings.min_score}점)"
+        status_messages = {
+            "warmup_trend": "15분봉 데이터 워밍업 중 (EMA200 계산 대기)",
+            "warmup_main": "3분봉 데이터 워밍업 중",
+            "rsi_na": "RSI 계산 데이터 부족",
+            "flat_trend": "15분봉 추세 불명확 (횡보) - 리닝 방향 없음",
+        }
+        summary = status_messages.get(
+            composite.status,
+            f"모멘텀 크로스 대기 중 (리닝: {'롱' if composite.lean=='long' else '숏'}, 현재 {composite.total_score:.0f}점 / 기준 {settings.min_score}점)",
+        )
         return _build_no_trade(current_price, composite, market_state, volatility_state, summary)
 
     if composite.total_score < settings.min_score:

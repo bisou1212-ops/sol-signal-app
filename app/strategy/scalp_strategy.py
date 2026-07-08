@@ -30,6 +30,7 @@ class ScalpComposite:
     total_strategies: int
     breakdown: list[dict] = field(default_factory=list)
     lean: str = "neutral"          # 화면 표시용 리닝 방향 (추세 기준, 크로스 전이어도 표시)
+    status: str = "ok"             # ok | warmup_trend | warmup_main | rsi_na | flat_trend
 
 
 def evaluate_scalp(main_df: pd.DataFrame, trend_df: pd.DataFrame) -> ScalpComposite:
@@ -39,11 +40,11 @@ def evaluate_scalp(main_df: pd.DataFrame, trend_df: pd.DataFrame) -> ScalpCompos
         return ScalpComposite(0.0, Direction.NEUTRAL, 0, len(CONDITION_NAMES), [
             {"name": "추세필터", "score": 0, "direction": "neutral",
              "reasons": [f"15m 데이터 워밍업 중 (EMA200 계산에 {need}봉 더 필요)"]},
-        ])
+        ], status="warmup_trend")
     if len(main_df) < settings.swing_lookback + 5:
         return ScalpComposite(0.0, Direction.NEUTRAL, 0, len(CONDITION_NAMES), [
             {"name": "구조유지", "score": 0, "direction": "neutral", "reasons": ["3m 데이터 워밍업 중"]},
-        ])
+        ], status="warmup_main")
 
     last = main_df.iloc[-1]
     rsi_series = ta.momentum.rsi(main_df["close"], window=settings.rsi_fast_period)
@@ -51,7 +52,7 @@ def evaluate_scalp(main_df: pd.DataFrame, trend_df: pd.DataFrame) -> ScalpCompos
     if pd.isna(rsi_now) or pd.isna(rsi_prev):
         return ScalpComposite(0.0, Direction.NEUTRAL, 0, len(CONDITION_NAMES), [
             {"name": "모멘텀전환", "score": 0, "direction": "neutral", "reasons": ["RSI 계산 데이터 부족"]},
-        ])
+        ], status="rsi_na")
 
     trend_last = trend_df.iloc[-1]
     uptrend = trend_last["ema50"] > trend_last["ema200"]
@@ -66,7 +67,7 @@ def evaluate_scalp(main_df: pd.DataFrame, trend_df: pd.DataFrame) -> ScalpCompos
         return ScalpComposite(0.0, Direction.NEUTRAL, 0, len(CONDITION_NAMES), [
             {"name": "추세필터", "score": 0, "direction": "neutral",
              "reasons": [f"15m EMA50({trend_last['ema50']:.3f})≈EMA200({trend_last['ema200']:.3f}) 방향 불명확"]},
-        ])
+        ], status="flat_trend")
 
     is_long = lean == Direction.LONG
 
