@@ -13,6 +13,9 @@ from app.backtest.metrics import summarize
 from app.config import settings
 from app.data import signal_log
 from app.signals.kelly_sizing import calculate_position
+from app.signals.scheduler import get_status as scheduler_status_fn
+from app.signals.scheduler import start as start_scheduler
+from app.signals.scheduler import stop as stop_scheduler
 from app.signals.signal_generator import generate_signal
 from app.signals.trade_resolver import resolve_pending_trades
 
@@ -25,8 +28,14 @@ signal_log.init_db()
 DASHBOARD_HTML = (Path(__file__).parent / "ui" / "dashboard.html").read_text(encoding="utf-8")
 
 
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()  # 대시보드를 아무도 안 봐도 서버가 알아서 주기적으로 신호 체크
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
+    stop_scheduler()
     await bitget_client.close()
 
 
@@ -38,6 +47,12 @@ def dashboard():
 @app.get("/health")
 def health():
     return {"status": "ok", "symbol": settings.symbol}
+
+
+@app.get("/scheduler/status")
+def scheduler_status():
+    """백그라운드 스케줄러가 정상 작동 중인지 확인 (run_count가 계속 늘어나야 정상)"""
+    return scheduler_status_fn()
 
 
 @app.get("/signal")

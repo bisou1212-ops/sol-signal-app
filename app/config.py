@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     max_leverage: int = 10             # 레버리지 상한
     margin_use_ratio: float = 0.2      # 증거금으로 쓸 계좌 비율 (레버리지 역산 기준)
 
+    # 백그라운드 스케줄러 (대시보드를 안 열어도 서버가 알아서 주기적으로 신호 체크)
+    scheduler_interval_seconds: int = 60
+
     class Config:
         env_file = ".env"
 
