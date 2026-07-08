@@ -223,8 +223,8 @@ function render(s){
   // 전략 합의 미터 (시그니처 엘리먼트)
   const meter = document.getElementById('meter');
   meter.innerHTML = '';
-  let agree = 0;
-  const majorityDir = s.position === '롱' ? 'long' : s.position === '숏' ? 'short' : 'neutral';
+  const nonNeutral = (s.strategy_breakdown || []).filter(b => b.direction !== 'neutral');
+  const agree = nonNeutral.length;  // 관망 상태에서도 "리닝 방향" 기준으로 충족 개수를 센다 (position 기준이면 관망일 때 항상 0이 되는 버그가 있었음)
   (s.strategy_breakdown || []).forEach(b=>{
     const w = WEIGHTS[b.name] || 0.2;
     const seg = document.createElement('div');
@@ -233,7 +233,6 @@ function render(s){
     seg.style.background = DIR_COLOR[b.direction] || '#3A4150';
     seg.style.opacity = Math.max(0.25, b.score/100);
     meter.appendChild(seg);
-    if (b.direction === majorityDir && majorityDir !== 'neutral') agree++;
   });
   document.getElementById('agreement').textContent = agree + '/' + (s.strategy_breakdown||[]).length + ' 일치';
 

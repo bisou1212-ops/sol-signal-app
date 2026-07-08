@@ -82,7 +82,7 @@ def build_signal(tf_data: dict[str, pd.DataFrame]) -> Signal:
 
     composite = evaluate_scalp(main_df, trend_df)
 
-    market_state = get_market_state(trend_df, composite.direction)
+    market_state = get_market_state(trend_df, Direction(composite.lean))
     volatility_state = get_volatility_state(main_df)
 
     if composite.direction == Direction.NEUTRAL:
