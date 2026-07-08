@@ -1,20 +1,25 @@
-"""5개 전략 -> 점수 종합 -> 상위시간봉 일치 -> RR 검증 -> 최종 신호"""
+"""초단타 스켈핑: 5조건 컨플루언스 -> RR 검증 -> 켈리 사이징 -> 최종 신호"""
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import pandas as pd
 
 from app.config import settings
+from app.data import signal_log
 from app.data.candle_store import fetch_multi_tf
 from app.indicators.engine import compute_multi_tf
-from app.scoring.htf_alignment import check_htf_alignment
-from app.scoring.score_engine import calculate_composite_score
+from app.signals.kelly_sizing import calculate_position
 from app.signals.market_state import get_market_state, get_volatility_state
 from app.signals.risk_manager import calculate_risk_targets
 from app.strategy.base import Direction
-from app.strategy.engine import run_all_strategies
+from app.strategy.scalp_strategy import evaluate_scalp
 
 POSITION_LABEL = {Direction.LONG: "롱", Direction.SHORT: "숏", Direction.NEUTRAL: "관망"}
+
+# 백테스트 실적이 아직 없을 때 켈리 계산에 쓰는 보수적 기본 가정치
+DEFAULT_WIN_RATE = 0.5
+DEFAULT_AVG_WIN_R = 1.5
+DEFAULT_AVG_LOSS_R = 1.0
 
 
 @dataclass
@@ -35,6 +40,11 @@ class Signal:
     reasons: list[str] = field(default_factory=list)
     strategy_breakdown: list[dict] = field(default_factory=list)
     htf_info: dict = field(default_factory=dict)
+    # 켈리 사이징 (is_trade=True일 때만 값 존재)
+    suggested_risk_pct: float | None = None
+    suggested_leverage: int | None = None
+    suggested_position_size: float | None = None
+    sizing_note: str = ""
 
 
 def _build_no_trade(
@@ -64,45 +74,51 @@ def _build_no_trade(
 
 
 def build_signal(tf_data: dict[str, pd.DataFrame]) -> Signal:
-    """지표가 포함된 멀티 타임프레임 데이터로 최종 신호 생성"""
+    """지표가 포함된 멀티 타임프레임 데이터로 최종 신호 생성 (main=3m 실행봉, htf1=15m 추세필터)"""
     main_df = tf_data["main"]
+    trend_df = tf_data["htf1"]
     current_price = float(main_df.iloc[-1]["close"])
 
-    results = run_all_strategies(main_df)
-    composite = calculate_composite_score(results)
+    composite = evaluate_scalp(main_df, trend_df)
 
-    market_state = get_market_state(main_df, composite.direction)
+    market_state = get_market_state(trend_df, composite.direction)
     volatility_state = get_volatility_state(main_df)
 
     if composite.direction == Direction.NEUTRAL:
-        return _build_no_trade(current_price, composite, market_state, volatility_state, "방향성 불명확")
+        return _build_no_trade(current_price, composite, market_state, volatility_state, "5조건 컨플루언스 미충족 (방향성 불명확)")
 
     if composite.total_score < settings.min_score:
         return _build_no_trade(
             current_price, composite, market_state, volatility_state,
-            f"종합 점수 {composite.total_score:.1f} < 기준 {settings.min_score}",
+            f"조건 충족 {composite.agreement_count}/{composite.total_strategies} ({composite.total_score:.0f}점) < 기준 {settings.min_score}점",
         )
-
-    htf_check = check_htf_alignment(composite.direction, tf_data["htf1"], tf_data["htf2"])
-    if not htf_check["aligned"]:
-        signal = _build_no_trade(
-            current_price, composite, market_state, volatility_state,
-            f"상위 시간봉 불일치 (1H:{htf_check['htf1_direction']}, 4H:{htf_check['htf2_direction']})",
-        )
-        signal.htf_info = htf_check
-        return signal
 
     risk = calculate_risk_targets(main_df, composite.direction)
     if risk is None or risk.risk_reward < settings.min_risk_reward:
         rr_val = risk.risk_reward if risk else 0
-        signal = _build_no_trade(
+        return _build_no_trade(
             current_price, composite, market_state, volatility_state,
             f"손익비 {rr_val} < 기준 1:{settings.min_risk_reward}",
         )
-        signal.htf_info = htf_check
-        return signal
 
-    reasons = [f"{b['name']} {b['score']}점: {', '.join(b['reasons'][:2])}" for b in composite.breakdown]
+    reasons = [f"{b['name']}: {b['reasons'][0]}" for b in composite.breakdown]
+
+    # 켈리 사이징: 최근 백테스트 실적이 있으면 사용, 없으면 보수적 기본값
+    stats = signal_log.get_backtest_stats()
+    if stats:
+        win_rate, avg_win, avg_loss = stats["win_rate"] / 100, stats["avg_win_r"], stats["avg_loss_r"]
+        sizing_note = f"백테스트 실적 기반 (표본 {stats['total_trades']}건, {stats['updated_at'][:10]} 기준)"
+    else:
+        win_rate, avg_win, avg_loss = DEFAULT_WIN_RATE, DEFAULT_AVG_WIN_R, DEFAULT_AVG_LOSS_R
+        sizing_note = "백테스트 실적 없음 - 보수적 기본 가정치(승률50%/RR1.5) 사용. /backtest 먼저 실행 권장"
+
+    sizing = calculate_position(
+        balance=1_000_000,  # 계좌 잔고는 % 기준으로만 쓰이므로 임의 기준값(비율 계산용)
+        entry_price=risk.entry, stop_price=risk.stop_loss,
+        win_rate=win_rate, avg_win=avg_win, avg_loss=avg_loss,
+    )
+    if sizing and sizing.note:
+        sizing_note = sizing.note
 
     return Signal(
         current_price=round(current_price, 4),
@@ -120,7 +136,10 @@ def build_signal(tf_data: dict[str, pd.DataFrame]) -> Signal:
         is_trade=True,
         reasons=reasons,
         strategy_breakdown=composite.breakdown,
-        htf_info=htf_check,
+        suggested_risk_pct=sizing.risk_pct if sizing else None,
+        suggested_leverage=sizing.suggested_leverage if sizing else None,
+        suggested_position_size=sizing.position_size if sizing else None,
+        sizing_note=sizing_note,
     )
 
 

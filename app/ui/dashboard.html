@@ -132,6 +132,8 @@
       <div class="row"><span class="k">TP2</span><span class="v mono" id="tp2">-</span></div>
       <div class="row"><span class="k">TP3</span><span class="v mono" id="tp3">-</span></div>
       <div class="row"><span class="k">Risk Reward</span><span class="v mono" id="rr">-</span></div>
+      <div class="row"><span class="k">권장 리스크(켈리)</span><span class="v mono" id="kellyRisk">-</span></div>
+      <div class="row"><span class="k">권장 레버리지</span><span class="v mono" id="kellyLev">-</span></div>
     </div>
     <div class="col" id="strategyCol"></div>
   </div>
@@ -144,6 +146,7 @@
   <div class="reasons">
     <h4>진입 근거</h4>
     <ul id="reasonList"></ul>
+    <div id="sizingNote" style="margin-top:10px; font-size:11px; color:var(--muted);"></div>
   </div>
 
   <div class="stats">
@@ -199,6 +202,9 @@ function render(s){
   document.getElementById('tp2').textContent = fmt(s.tp2);
   document.getElementById('tp3').textContent = fmt(s.tp3);
   document.getElementById('rr').textContent = s.risk_reward ? ('1 : ' + s.risk_reward) : '-';
+  document.getElementById('kellyRisk').textContent = s.suggested_risk_pct != null ? (s.suggested_risk_pct + '%') : '-';
+  document.getElementById('kellyLev').textContent = s.suggested_leverage != null ? (s.suggested_leverage + 'x') : '-';
+  document.getElementById('sizingNote').textContent = s.sizing_note || '';
 
   document.getElementById('marketState').textContent = s.market_state;
   document.getElementById('volState').textContent = s.volatility_state;

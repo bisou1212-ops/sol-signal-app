@@ -1,5 +1,5 @@
 """백테스트 거래 결과 타입"""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -18,3 +18,4 @@ class Trade:
     hit_tp2: bool
     hit_tp3: bool
     outcome: str            # "익절", "손절", "본전", "미종료"
+    breakdown: list[dict] = field(default_factory=list)  # 진입 시점 조건별 충족 여부(조건별 승률 분석용)

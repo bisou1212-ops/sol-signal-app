@@ -14,11 +14,13 @@ class BacktestReport:
     avg_r: float
     profit_factor: float
     max_drawdown_r: float
+    avg_win_r: float
+    avg_loss_r: float
 
 
 def summarize(trades: list[Trade]) -> BacktestReport:
     if not trades:
-        return BacktestReport(0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return BacktestReport(0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     wins = [t for t in trades if t.r_multiple > 0]
     losses = [t for t in trades if t.r_multiple <= 0]
@@ -44,4 +46,6 @@ def summarize(trades: list[Trade]) -> BacktestReport:
         avg_r=round(total_r / len(trades), 2),
         profit_factor=profit_factor,
         max_drawdown_r=round(max_dd, 2),
+        avg_win_r=round(gross_profit / len(wins), 2) if wins else 0.0,
+        avg_loss_r=round(gross_loss / len(losses), 2) if losses else 0.0,
     )

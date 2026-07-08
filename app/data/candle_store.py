@@ -9,6 +9,7 @@ from app.config import settings
 # 내부 표기 -> Bitget granularity 표기
 GRANULARITY_MAP = {
     "1m": "1m",
+    "3m": "3m",
     "5m": "5m",
     "15m": "15m",
     "30m": "30m",
