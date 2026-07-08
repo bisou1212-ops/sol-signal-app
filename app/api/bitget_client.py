@@ -64,11 +64,13 @@ class BitgetClient:
     async def get_candles(
         self,
         symbol: str = None,
-        granularity: str = "15m",
+        granularity: str = "15min",
         limit: int = 200,
+        end_time: str = None,
     ) -> list[list[str]]:
         """캔들(K라인) 조회
-        granularity: 1m,5m,15m,30m,1H,4H,1D 등 (Bitget 표기법)
+        granularity: 1min,5min,15min,30min,1h,4h,1day 등 (Bitget v2 공식 표기법)
+        end_time: 이 시각(ms) 이전 데이터 조회 (과거 데이터 페이지네이션용)
         """
         path = "/api/v2/mix/market/candles"
         params = {
@@ -77,6 +79,8 @@ class BitgetClient:
             "granularity": granularity,
             "limit": str(limit),
         }
+        if end_time:
+            params["endTime"] = end_time
         data = await self._request("GET", path, params=params)
         return data.get("data", [])
 
