@@ -82,6 +82,24 @@
   .reasons ul{ margin:0; padding-left:18px; font-size:12.5px; line-height:1.6; color:#C7CBD3; }
 
   .no-trade{ padding:20px; text-align:center; color:var(--wait); font-size:13px; border-top:1px solid var(--line);}
+
+  .stats{ padding:16px 20px; border-top:1px solid var(--line); }
+  .stats h4{ margin:0 0 12px; font-size:12px; color:var(--muted); font-weight:600; letter-spacing:.03em; display:flex; justify-content:space-between; align-items:center;}
+  .stats h4 select{ background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:6px; font-size:11px; padding:3px 6px; }
+  .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
+  .stat-box{ background:var(--panel-2); border-radius:10px; padding:10px 8px; text-align:center; }
+  .stat-box .n{ font-size:18px; font-weight:700; }
+  .stat-box .l{ font-size:10px; color:var(--muted); margin-top:2px; }
+
+  .history{ max-height:220px; overflow-y:auto; }
+  .hist-row{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); font-size:12px; }
+  .hist-row:last-child{ border-bottom:none; }
+  .hist-badge{ font-size:10px; font-weight:700; padding:3px 8px; border-radius:999px; flex-shrink:0; width:32px; text-align:center; }
+  .hist-badge.long{ background:rgba(31,206,143,.15); color:var(--long); }
+  .hist-badge.short{ background:rgba(255,77,106,.15); color:var(--short); }
+  .hist-time{ color:var(--muted); flex-shrink:0; }
+  .hist-price{ margin-left:auto; }
+  .empty-hist{ color:var(--muted); font-size:12px; text-align:center; padding:12px 0; }
 </style>
 </head>
 <body>
@@ -126,6 +144,26 @@
   <div class="reasons">
     <h4>진입 근거</h4>
     <ul id="reasonList"></ul>
+  </div>
+
+  <div class="stats">
+    <h4>
+      <span>포지션 진입 통계</span>
+      <select id="periodSelect">
+        <option value="24">최근 24시간</option>
+        <option value="168">최근 7일</option>
+        <option value="720">최근 30일</option>
+        <option value="8760">전체</option>
+      </select>
+    </h4>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="n mono" id="statChecks">-</div><div class="l">총 체크</div></div>
+      <div class="stat-box"><div class="n mono" id="statTrades">-</div><div class="l">진입 신호</div></div>
+      <div class="stat-box"><div class="n mono" id="statRate">-</div><div class="l">신호율</div></div>
+      <div class="stat-box"><div class="n mono" id="statPos">-</div><div class="l">롱/숏</div></div>
+    </div>
+    <h4>최근 진입 이력</h4>
+    <div class="history" id="historyList"><div class="empty-hist">불러오는 중...</div></div>
   </div>
 </div>
 
@@ -207,6 +245,41 @@ function render(s){
 
 loadSignal();
 setInterval(loadSignal, 15000);
+
+async function loadStats(){
+  const hours = document.getElementById('periodSelect').value;
+  try{
+    const res = await fetch('/signal/stats?hours=' + hours);
+    const st = await res.json();
+    document.getElementById('statChecks').textContent = st.total_checks;
+    document.getElementById('statTrades').textContent = st.trade_signals;
+    document.getElementById('statRate').textContent = st.trade_rate_pct + '%';
+    const pos = st.by_position || {};
+    document.getElementById('statPos').textContent = (pos['롱']||0) + ' / ' + (pos['숏']||0);
+  }catch(e){}
+}
+
+async function loadHistory(){
+  try{
+    const res = await fetch('/signal/history?limit=20&trades_only=true');
+    const rows = await res.json();
+    const el = document.getElementById('historyList');
+    if(!rows.length){ el.innerHTML = '<div class="empty-hist">아직 진입 신호가 없습니다</div>'; return; }
+    el.innerHTML = rows.map(r => `
+      <div class="hist-row">
+        <span class="hist-badge ${r.position === '롱' ? 'long' : 'short'}">${r.position}</span>
+        <span class="hist-time mono">${new Date(r.signal_time).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+        <span class="mono">${r.confidence}%</span>
+        <span class="hist-price mono">$${fmt(r.entry_price)}</span>
+      </div>
+    `).join('');
+  }catch(e){}
+}
+
+document.getElementById('periodSelect').addEventListener('change', loadStats);
+loadStats();
+loadHistory();
+setInterval(()=>{ loadStats(); loadHistory(); }, 15000);
 </script>
 </body>
 </html>
