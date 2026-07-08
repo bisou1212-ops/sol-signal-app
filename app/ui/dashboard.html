@@ -236,16 +236,21 @@ function render(s){
   });
   document.getElementById('agreement').textContent = agree + '/' + (s.strategy_breakdown||[]).length + ' 일치';
 
-  // 전략별 점수/기준/근거
+  // 전략별 점수/기준/근거 (progress = 0~100 실시간 근접도, 진입 판정은 score를 그대로 사용)
   const col = document.getElementById('strategyCol');
   col.innerHTML = '';
+  const leanEntry = (s.strategy_breakdown || []).find(x => x.direction !== 'neutral');
+  const leanColor = leanEntry ? (DIR_COLOR[leanEntry.direction] || '#3A4150') : '#3A4150';
   (s.strategy_breakdown || []).forEach(b=>{
     const wrap = document.createElement('div');
     wrap.className = 'strategy';
     const reasonText = (b.reasons && b.reasons[0]) ? b.reasons[0] : '';
+    const display = (b.progress != null) ? b.progress : b.score;
+    const barColor = b.direction !== 'neutral' ? (DIR_COLOR[b.direction] || '#3A4150') : leanColor;
+    const barOpacity = b.direction !== 'neutral' ? 1 : Math.max(0.2, display / 100);
     wrap.innerHTML = `
-      <div class="strategy-top"><span class="name">${b.name}</span><span class="mono">${b.score}</span></div>
-      <div class="bar"><div class="bar-fill" style="width:${b.score}%;background:${DIR_COLOR[b.direction]||'#3A4150'}"></div></div>
+      <div class="strategy-top"><span class="name">${b.name}</span><span class="mono">${display}</span></div>
+      <div class="bar"><div class="bar-fill" style="width:${display}%;background:${barColor};opacity:${barOpacity}"></div></div>
       <div style="font-size:10.5px; color:var(--muted); margin-top:3px; line-height:1.4;">${reasonText}</div>
     `;
     col.appendChild(wrap);
