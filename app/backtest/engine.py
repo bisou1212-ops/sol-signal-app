@@ -2,7 +2,10 @@
 import pandas as pd
 
 from app.backtest.trade import Trade
+from app.config import settings
 from app.signals.signal_generator import build_signal
+from app.strategy.base import Direction
+from app.strategy.scalp_strategy import evaluate_scalp
 
 MIN_WARMUP_BARS = 30  # 메인(3m)은 RSI7/거래량평균/스윙 계산에 필요한 최소치만. EMA200 워밍업은 15m 추세필터 df 자체에서 처리.
 
@@ -105,3 +108,60 @@ def run_backtest(tf_data: dict[str, pd.DataFrame]) -> list[Trade]:
             i += 1
 
     return trades
+
+
+def run_backtest_debug(tf_data: dict[str, pd.DataFrame]) -> dict:
+    """어느 단계에서 신호가 막히는지 진단 (워밍업 부족 / 크로스 미발생 / 점수 미달 등을 구분)"""
+    main_df = tf_data["main"]
+    htf1_df, htf2_df = tf_data["htf1"], tf_data["htf2"]
+
+    counters = {
+        "total_bars_walked": 0,
+        "skipped_htf_too_short": 0,
+        "warmup_trend": 0,
+        "warmup_main": 0,
+        "rsi_na": 0,
+        "flat_trend": 0,
+        "cross_not_fired": 0,       # 방향은 있는데(리닝) 아직 RSI 크로스 자체가 안 남
+        "crossed_but_low_score": 0,  # 크로스는 났는데 총점이 min_score 미달
+        "trade_signals": 0,
+    }
+    score_when_crossed: list[float] = []
+
+    i = MIN_WARMUP_BARS
+    while i < len(main_df) - 1:
+        counters["total_bars_walked"] += 1
+        window_main = main_df.iloc[: i + 1]
+        cutoff = window_main.iloc[-1]["timestamp"]
+        window_htf1 = _htf_slice(htf1_df, cutoff)
+        window_htf2 = _htf_slice(htf2_df, cutoff)
+
+        if len(window_htf1) < 20 or len(window_htf2) < 20:
+            counters["skipped_htf_too_short"] += 1
+            i += 1
+            continue
+
+        composite = evaluate_scalp(window_main, window_htf1)
+
+        if composite.status in ("warmup_trend", "warmup_main", "rsi_na", "flat_trend"):
+            counters[composite.status] += 1
+        elif composite.direction == Direction.NEUTRAL:
+            counters["cross_not_fired"] += 1
+        else:
+            score_when_crossed.append(composite.total_score)
+            if composite.total_score < settings.min_score:
+                counters["crossed_but_low_score"] += 1
+            else:
+                counters["trade_signals"] += 1
+
+        i += 1
+
+    return {
+        "main_bars": len(main_df),
+        "trend_bars": len(htf1_df),
+        "main_range": [str(main_df.iloc[0]["timestamp"]), str(main_df.iloc[-1]["timestamp"])] if len(main_df) else None,
+        "trend_range": [str(htf1_df.iloc[0]["timestamp"]), str(htf1_df.iloc[-1]["timestamp"])] if len(htf1_df) else None,
+        "counters": counters,
+        "cross_fired_count": len(score_when_crossed),
+        "avg_score_when_crossed": round(sum(score_when_crossed) / len(score_when_crossed), 1) if score_when_crossed else None,
+    }

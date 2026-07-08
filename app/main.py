@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 
 from app.api.bitget_client import bitget_client
 from app.backtest.data_loader import load_backtest_data
-from app.backtest.engine import run_backtest
+from app.backtest.engine import run_backtest, run_backtest_debug
 from app.backtest.metrics import summarize
 from app.config import settings
 from app.data import signal_log
@@ -80,6 +80,13 @@ async def backtest(limit: int = 3000):
             avg_loss_r=report.avg_loss_r, total_trades=report.total_trades,
         )
     return {"report": asdict(report), "trades": [asdict(t) for t in trades]}
+
+
+@app.get("/backtest/debug")
+async def backtest_debug(limit: int = 5000):
+    """왜 신호가 0건인지 단계별로 진단 (워밍업/크로스미발생/점수미달 구분)"""
+    tf_data = await load_backtest_data(limit=limit)
+    return run_backtest_debug(tf_data)
 
 
 @app.get("/backtest/conditions")
