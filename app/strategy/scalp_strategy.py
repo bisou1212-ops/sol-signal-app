@@ -121,6 +121,16 @@ def evaluate_scalp(main_df: pd.DataFrame, trend_df: pd.DataFrame) -> ScalpCompos
     else:
         structure_progress = 100.0 if structure_ok else 0.0
 
+    # 미충족 조건은 근접도 상한을 99로 캡 (100은 실제 충족에만 써야 표시 숫자와 근거 문구가 일치함)
+    if not vwap_ok:
+        vwap_progress = min(vwap_progress, 99.0)
+    if not rsi_crossed:
+        momentum_progress = min(momentum_progress, 99.0)
+    if not volume_spike:
+        volume_progress = min(volume_progress, 99.0)
+    if not structure_ok:
+        structure_progress = min(structure_progress, 99.0)
+
     # 근거 문자열 (충족/미충족 모두 기준값을 함께 표기)
     trend_reason = f"15m EMA50{'>' if is_long else '<'}EMA200 ({'상승' if is_long else '하락'} 추세, 리닝: {'롱' if is_long else '숏'}, ADX {adx:.1f}" + (f", 추세강도 {trend_progress:.0f}점)" if pd.notna(adx) else ")")
 

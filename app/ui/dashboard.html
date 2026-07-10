@@ -298,12 +298,18 @@ async function loadHistory(){
         ? `<span class="mono" style="color:${st.color}; font-weight:700; font-size:11px;">${st.label}${r.r_multiple!=null ? ' ('+(r.r_multiple>0?'+':'')+r.r_multiple+'R)' : ''}</span>`
         : `<span class="mono" style="color:var(--muted); font-size:11px;">진행중</span>`;
       return `
-      <div class="hist-row">
-        <span class="hist-badge ${r.position === '롱' ? 'long' : 'short'}">${r.position}</span>
-        <span class="hist-time mono">${new Date(r.signal_time).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-        <span class="mono">${r.confidence}%</span>
-        ${outcomeBadge}
-        <span class="hist-price mono">$${fmt(r.entry_price)}</span>
+      <div class="hist-row" style="flex-direction:column; align-items:stretch; gap:4px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="hist-badge ${r.position === '롱' ? 'long' : 'short'}">${r.position}</span>
+          <span class="hist-time mono">${new Date(r.signal_time).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+          <span class="mono">${r.confidence}%</span>
+          ${outcomeBadge}
+          <span class="hist-price mono">$${fmt(r.entry_price)}</span>
+        </div>
+        <div class="mono" style="font-size:10.5px; color:var(--muted); padding-left:2px;">
+          SL $${fmt(r.stop_loss)} · TP1 $${fmt(r.tp1)} · TP2 $${fmt(r.tp2)} · TP3 $${fmt(r.tp3)}
+          ${r.exit_price != null ? ' · 종료가 $' + fmt(r.exit_price) : ''}
+        </div>
       </div>
     `;}).join('');
   }catch(e){}
